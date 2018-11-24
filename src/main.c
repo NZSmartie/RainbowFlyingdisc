@@ -27,6 +27,10 @@
 #include <gatt/bas.h>
 #include <gatt/cts.h>
 
+#include <device.h>
+#include <board.h>
+#include <gpio.h>
+
 /* Custom Service Variables */
 static struct bt_uuid_128 vnd_uuid = BT_UUID_INIT_128(
 	0xf0, 0xde, 0xbc, 0x9a, 0x78, 0x56, 0x34, 0x12,
@@ -270,11 +274,71 @@ static struct bt_conn_auth_cb auth_cb_display = {
 	.cancel = auth_cancel,
 };
 
+volatile u32_t *const TIMER4_START     = (volatile u32_t *const) 0x4001B000;
+volatile u32_t *const TIMER4_CC0EVT    = (volatile u32_t *const) 0x4001B140;
+volatile u32_t *const TIMER4_SHORTS    = (volatile u32_t *const) 0x4001B200;
+volatile u32_t *const TIMER4_INTENSET  = (volatile u32_t *const) 0x4001B304;
+volatile u32_t *const TIMER4_BITMODE   = (volatile u32_t *const) 0x4001B508;
+volatile u32_t *const TIMER4_PRESCALER = (volatile u32_t *const) 0x4001B510;
+volatile u32_t *const TIMER4_CC0       = (volatile u32_t *const) 0x4001B540;
+
+volatile u32_t *const GPIO0_OUTSET     = (volatile u32_t *const) 0x50000508;
+volatile u32_t *const GPIO0_OUTCLR     = (volatile u32_t *const) 0x5000050C;
+
+u32_t outsets[16] = {0};
+u8_t outset_i = 0;
+u32_t reset_outclr = 0x00FFFFFF;
+
+ISR_DIRECT_DECLARE(pwm_isr)
+{
+  *TIMER4_CC0EVT = 0;
+
+  if (outset_i == 0)
+    *GPIO0_OUTCLR = reset_outclr;
+
+  *GPIO0_OUTSET = outsets[outset_i];
+
+  outset_i++;
+  outset_i %= 16;
+
+  // TODO Do we need to call ISR_DIRECT_PM?
+
+  return 0;
+}
+
 void main(void)
 {
 	int err;
 
-	err = bt_enable(bt_ready);
+  outsets[3] |= (1 << 15);
+  outsets[5] |= (1 << 16);
+  outsets[7] |= (1 << 17);
+  outsets[9] |= (1 << 18);
+
+  struct device *gpio0 = device_get_binding(CONFIG_GPIO_P0_DEV_NAME);
+
+  if (gpio0 == NULL) {
+    printk("Couldn't get device\n");
+    return;
+  }
+
+  for (int i = 0; i < 24; i++) {
+    gpio_pin_configure(gpio0, i, GPIO_DIR_OUT);
+  }
+
+  IRQ_DIRECT_CONNECT(TIMER4_IRQn, 7, pwm_isr, 0); //TODO
+  irq_enable(TIMER4_IRQn);
+
+  *TIMER4_SHORTS    = 1;        // Clear timer on CC0 comparison
+  *TIMER4_INTENSET  = 1 << 16;  // Enable interrupt for CC0
+  *TIMER4_BITMODE   = 1;        // 8-bit
+  *TIMER4_PRESCALER = 0;        // As fast as possible
+  *TIMER4_CC0       = 80;       // Value for CC0 to compare to
+
+  *TIMER4_START     = 1;
+
+
+  err = bt_enable(bt_ready);
 	if (err) {
 		printk("Bluetooth init failed (err %d)\n", err);
 		return;
