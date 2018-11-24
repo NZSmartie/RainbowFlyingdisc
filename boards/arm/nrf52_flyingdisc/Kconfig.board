@@ -1,0 +1,5 @@
+# Kconfig - nRF52 Flying Disc board configuration
+
+config  BOARD_NRF52_FLYINGDISC
+	bool "nRF52 Flying Disc"
+	depends on SOC_NRF52832_QFAA

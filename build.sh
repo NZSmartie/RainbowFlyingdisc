@@ -6,7 +6,7 @@ mkdir -p build
 
 pushd build > /dev/null
 
-cmake -DBOARD=nrf52840_pca10056 -GNinja ..
+cmake -GNinja ..
 
 ninja
 
