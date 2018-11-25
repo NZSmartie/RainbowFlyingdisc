@@ -27,6 +27,11 @@
 #include <gatt/bas.h>
 #include <gatt/cts.h>
 
+#include <device.h>
+#include <board.h>
+
+#include "mpu6050.h"
+
 /* Custom Service Variables */
 static struct bt_uuid_128 vnd_uuid = BT_UUID_INIT_128(
 	0xf0, 0xde, 0xbc, 0x9a, 0x78, 0x56, 0x34, 0x12,
@@ -270,11 +275,34 @@ static struct bt_conn_auth_cb auth_cb_display = {
 	.cancel = auth_cancel,
 };
 
+void print_mpu_data(void) {
+  int err;
+
+  struct device *i2c = device_get_binding(CONFIG_I2C_0_NAME);
+  if (i2c == NULL) {
+    printk("Couldn't get device\n");
+    return;
+  }
+
+  err = mpu6050_init(i2c, 0x68);
+  if (err) return;
+
+  struct mpu6050_data mpubuf;
+
+  while (true) {
+    err = mpu6050_read(i2c, 0x68, &mpubuf);
+    if (err) continue;
+    printk("%d\t%d\t%d\t%d\t%d\t%d\t%d\n", mpubuf.x_accel, mpubuf.y_accel, mpubuf.z_accel, mpubuf.temp, mpubuf.x_gyro, mpubuf.y_gyro, mpubuf.z_gyro);
+  }
+}
+
 void main(void)
 {
 	int err;
 
-	err = bt_enable(bt_ready);
+  // print_mpu_data(); // Test the MPU driver (loops forever)
+
+  err = bt_enable(bt_ready);
 	if (err) {
 		printk("Bluetooth init failed (err %d)\n", err);
 		return;

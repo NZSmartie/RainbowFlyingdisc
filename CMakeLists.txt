@@ -11,6 +11,7 @@ project(peripheral)
 
 target_sources(app PRIVATE
   src/main.c
+  src/mpu6050.c
   $ENV{ZEPHYR_BASE}/samples/bluetooth/gatt/hrs.c
   $ENV{ZEPHYR_BASE}/samples/bluetooth/gatt/bas.c
   $ENV{ZEPHYR_BASE}/samples/bluetooth/gatt/cts.c
