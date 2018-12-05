@@ -1,0 +1,33 @@
+mainmenu "Rainbow Flying Disc Kernel Configuration"
+
+menu "Application"
+
+menu "APA102 Strip Config"
+    depends on APA102_STRIP
+
+config APA102_STRIP_NAME
+    string
+    default "led_strip_apa102"
+
+config APA102_STRIP_BUS_NAME
+    string "SPI master to use to drive the strip"
+    depends on SPI
+    default "SPI_0"
+    help
+		Specify the device name of the SPI master which the
+		APA102 driver should use to control the LED strip.
+		Examples: SPI_0, SPI_1, etc.
+
+config APA102_STRIP_FREQUENCY
+	int "SPI clock line frequency"
+	default 2000000
+	help
+		SPI clock rate, in Hz, to use while driving the strip.
+		The recommended maximum is 2 MHz (2000000); the absolute maximum
+		is 20 MHz (20000000). If unsure, accept the default value.
+
+endmenu
+
+endmenu
+
+source "$ZEPHYR_BASE/Kconfig.zephyr"
