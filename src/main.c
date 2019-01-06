@@ -6,6 +6,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+// Include generated headerfile for auto completion
+#include <autoconf.h>
+
 #include <zephyr/types.h>
 #include <stddef.h>
 #include <string.h>
@@ -22,324 +25,159 @@
 #include <bluetooth/uuid.h>
 #include <bluetooth/gatt.h>
 
-#include <gatt/hrs.h>
-#include <gatt/dis.h>
-#include <gatt/bas.h>
-#include <gatt/cts.h>
-
-#include <device.h>
 #include <board.h>
+#include <device.h>
+#include <led_strip.h>
+#include <gpio.h>
+#include <sensor.h>
 
-#include "mpu6050.h"
-
-/* Custom Service Variables */
-static struct bt_uuid_128 vnd_uuid = BT_UUID_INIT_128(
-	0xf0, 0xde, 0xbc, 0x9a, 0x78, 0x56, 0x34, 0x12,
-	0x78, 0x56, 0x34, 0x12, 0x78, 0x56, 0x34, 0x12);
-
-static struct bt_uuid_128 vnd_enc_uuid = BT_UUID_INIT_128(
-	0xf1, 0xde, 0xbc, 0x9a, 0x78, 0x56, 0x34, 0x12,
-	0x78, 0x56, 0x34, 0x12, 0x78, 0x56, 0x34, 0x12);
-
-static struct bt_uuid_128 vnd_auth_uuid = BT_UUID_INIT_128(
-	0xf2, 0xde, 0xbc, 0x9a, 0x78, 0x56, 0x34, 0x12,
-	0x78, 0x56, 0x34, 0x12, 0x78, 0x56, 0x34, 0x12);
-
-static u8_t vnd_value[] = { 'V', 'e', 'n', 'd', 'o', 'r' };
-
-static ssize_t read_vnd(struct bt_conn *conn, const struct bt_gatt_attr *attr,
-			void *buf, u16_t len, u16_t offset)
-{
-	const char *value = attr->user_data;
-
-	return bt_gatt_attr_read(conn, attr, buf, len, offset, value,
-				 strlen(value));
-}
-
-static ssize_t write_vnd(struct bt_conn *conn, const struct bt_gatt_attr *attr,
-			 const void *buf, u16_t len, u16_t offset,
-			 u8_t flags)
-{
-	u8_t *value = attr->user_data;
-
-	if (offset + len > sizeof(vnd_value)) {
-		return BT_GATT_ERR(BT_ATT_ERR_INVALID_OFFSET);
-	}
-
-	memcpy(value + offset, buf, len);
-
-	return len;
-}
-
-static struct bt_gatt_ccc_cfg vnd_ccc_cfg[BT_GATT_CCC_MAX] = {};
-static u8_t simulate_vnd;
-static u8_t indicating;
-static struct bt_gatt_indicate_params ind_params;
-
-static void vnd_ccc_cfg_changed(const struct bt_gatt_attr *attr, u16_t value)
-{
-	simulate_vnd = (value == BT_GATT_CCC_INDICATE) ? 1 : 0;
-}
-
-static void indicate_cb(struct bt_conn *conn, const struct bt_gatt_attr *attr,
-			u8_t err)
-{
-	printk("Indication %s\n", err != 0 ? "fail" : "success");
-	indicating = 0;
-}
-
-#define MAX_DATA 74
-static u8_t vnd_long_value[] = {
-		  'V', 'e', 'n', 'd', 'o', 'r', ' ', 'd', 'a', 't', 'a', '1',
-		  'V', 'e', 'n', 'd', 'o', 'r', ' ', 'd', 'a', 't', 'a', '2',
-		  'V', 'e', 'n', 'd', 'o', 'r', ' ', 'd', 'a', 't', 'a', '3',
-		  'V', 'e', 'n', 'd', 'o', 'r', ' ', 'd', 'a', 't', 'a', '4',
-		  'V', 'e', 'n', 'd', 'o', 'r', ' ', 'd', 'a', 't', 'a', '5',
-		  'V', 'e', 'n', 'd', 'o', 'r', ' ', 'd', 'a', 't', 'a', '6',
-		  '.', ' ' };
-
-static ssize_t read_long_vnd(struct bt_conn *conn,
-			     const struct bt_gatt_attr *attr, void *buf,
-			     u16_t len, u16_t offset)
-{
-	const char *value = attr->user_data;
-
-	return bt_gatt_attr_read(conn, attr, buf, len, offset, value,
-				 sizeof(vnd_long_value));
-}
-
-static ssize_t write_long_vnd(struct bt_conn *conn,
-			      const struct bt_gatt_attr *attr, const void *buf,
-			      u16_t len, u16_t offset, u8_t flags)
-{
-	u8_t *value = attr->user_data;
-
-	if (flags & BT_GATT_WRITE_FLAG_PREPARE) {
-		return 0;
-	}
-
-	if (offset + len > sizeof(vnd_long_value)) {
-		return BT_GATT_ERR(BT_ATT_ERR_INVALID_OFFSET);
-	}
-
-	memcpy(value + offset, buf, len);
-
-	return len;
-}
-
-static const struct bt_uuid_128 vnd_long_uuid = BT_UUID_INIT_128(
-	0xf3, 0xde, 0xbc, 0x9a, 0x78, 0x56, 0x34, 0x12,
-	0x78, 0x56, 0x34, 0x12, 0x78, 0x56, 0x34, 0x12);
-
-static struct bt_gatt_cep vnd_long_cep = {
-	.properties = BT_GATT_CEP_RELIABLE_WRITE,
-};
-
-static int signed_value;
-
-static ssize_t read_signed(struct bt_conn *conn, const struct bt_gatt_attr *attr,
-			   void *buf, u16_t len, u16_t offset)
-{
-	const char *value = attr->user_data;
-
-	return bt_gatt_attr_read(conn, attr, buf, len, offset, value,
-				 sizeof(signed_value));
-}
-
-static ssize_t write_signed(struct bt_conn *conn, const struct bt_gatt_attr *attr,
-			    const void *buf, u16_t len, u16_t offset,
-			    u8_t flags)
-{
-	u8_t *value = attr->user_data;
-
-	if (offset + len > sizeof(signed_value)) {
-		return BT_GATT_ERR(BT_ATT_ERR_INVALID_OFFSET);
-	}
-
-	memcpy(value + offset, buf, len);
-
-	return len;
-}
-
-static const struct bt_uuid_128 vnd_signed_uuid = BT_UUID_INIT_128(
-	0xf3, 0xde, 0xbc, 0x9a, 0x78, 0x56, 0x34, 0x13,
-	0x78, 0x56, 0x34, 0x12, 0x78, 0x56, 0x34, 0x13);
-
-/* Vendor Primary Service Declaration */
-static struct bt_gatt_attr vnd_attrs[] = {
-	/* Vendor Primary Service Declaration */
-	BT_GATT_PRIMARY_SERVICE(&vnd_uuid),
-	BT_GATT_CHARACTERISTIC(&vnd_enc_uuid.uuid,
-			       BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE |
-			       BT_GATT_CHRC_INDICATE,
-			       BT_GATT_PERM_READ_ENCRYPT |
-			       BT_GATT_PERM_WRITE_ENCRYPT,
-			       read_vnd, write_vnd, vnd_value),
-	BT_GATT_CCC(vnd_ccc_cfg, vnd_ccc_cfg_changed),
-	BT_GATT_CHARACTERISTIC(&vnd_auth_uuid.uuid,
-			       BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE,
-			       BT_GATT_PERM_READ_AUTHEN |
-			       BT_GATT_PERM_WRITE_AUTHEN,
-			       read_vnd, write_vnd, vnd_value),
-	BT_GATT_CHARACTERISTIC(&vnd_long_uuid.uuid, BT_GATT_CHRC_READ |
-			       BT_GATT_CHRC_WRITE | BT_GATT_CHRC_EXT_PROP,
-			       BT_GATT_PERM_READ | BT_GATT_PERM_WRITE |
-			       BT_GATT_PERM_PREPARE_WRITE,
-			       read_long_vnd, write_long_vnd, &vnd_long_value),
-	BT_GATT_CEP(&vnd_long_cep),
-	BT_GATT_CHARACTERISTIC(&vnd_signed_uuid.uuid, BT_GATT_CHRC_READ |
-			       BT_GATT_CHRC_WRITE | BT_GATT_CHRC_AUTH,
-			       BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
-			       read_signed, write_signed, &signed_value),
-};
-
-static struct bt_gatt_service vnd_svc = BT_GATT_SERVICE(vnd_attrs);
-
-static const struct bt_data ad[] = {
-	BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
-	BT_DATA_BYTES(BT_DATA_UUID16_ALL,
-		      0x0d, 0x18, 0x0f, 0x18, 0x05, 0x18),
-	BT_DATA_BYTES(BT_DATA_UUID128_ALL,
-		      0xf0, 0xde, 0xbc, 0x9a, 0x78, 0x56, 0x34, 0x12,
-		      0x78, 0x56, 0x34, 0x12, 0x78, 0x56, 0x34, 0x12),
-};
+#include "gatt.h"
 
 static void connected(struct bt_conn *conn, u8_t err)
 {
-	if (err) {
-		printk("Connection failed (err %u)\n", err);
-	} else {
-		printk("Connected\n");
-	}
+    if (err) {
+        printk("Connection failed (err %u)\n", err);
+    } else {
+        printk("Connected\n");
+    }
 }
 
 static void disconnected(struct bt_conn *conn, u8_t reason)
 {
-	printk("Disconnected (reason %u)\n", reason);
+    printk("Disconnected (reason %u)\n", reason);
 }
 
 static struct bt_conn_cb conn_callbacks = {
-	.connected = connected,
-	.disconnected = disconnected,
+    .connected = connected,
+    .disconnected = disconnected,
 };
 
 static void bt_ready(int err)
 {
-	if (err) {
-		printk("Bluetooth init failed (err %d)\n", err);
-		return;
-	}
+    if (err) {
+        printk("Bluetooth init failed (err %d)\n", err);
+        return;
+    }
 
-	printk("Bluetooth initialized\n");
+    printk("Bluetooth initialized\n");
 
-	hrs_init(0x01);
-	bas_init();
-	cts_init();
-	dis_init(CONFIG_SOC, "Manufacturer");
-	bt_gatt_service_register(&vnd_svc);
+    // bt_set_name("Rainbow Flying Disc");
 
-	if (IS_ENABLED(CONFIG_SETTINGS)) {
-		settings_load();
-	}
+    // Initialise and register our Rainbow Flying Disc GATT service
+    rainbow_flying_disc_init();
 
-	err = bt_le_adv_start(BT_LE_ADV_CONN_NAME, ad, ARRAY_SIZE(ad), NULL, 0);
-	if (err) {
-		printk("Advertising failed to start (err %d)\n", err);
-		return;
-	}
-
-	printk("Advertising successfully started\n");
+    if (IS_ENABLED(CONFIG_SETTINGS)) {
+        settings_load();
+    }
 }
 
 static void auth_passkey_display(struct bt_conn *conn, unsigned int passkey)
 {
-	char addr[BT_ADDR_LE_STR_LEN];
+    char addr[BT_ADDR_LE_STR_LEN];
 
-	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
+    bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
 
-	printk("Passkey for %s: %06u\n", addr, passkey);
+    printk("Passkey for %s: %06u\n", addr, passkey);
 }
 
 static void auth_cancel(struct bt_conn *conn)
 {
-	char addr[BT_ADDR_LE_STR_LEN];
+    char addr[BT_ADDR_LE_STR_LEN];
 
-	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
+    bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
 
-	printk("Pairing cancelled: %s\n", addr);
+    printk("Pairing cancelled: %s\n", addr);
 }
 
 static struct bt_conn_auth_cb auth_cb_display = {
-	.passkey_display = auth_passkey_display,
-	.passkey_entry = NULL,
-	.cancel = auth_cancel,
+    .passkey_display = auth_passkey_display,
+    .passkey_entry = NULL,
+    .cancel = auth_cancel,
 };
 
-void print_mpu_data(void) {
-  int err;
+void print_mpu_data(struct device *mpu6050) {
+    struct sensor_value accel_xyz[3], gyro_xyz[3];
 
-  struct device *i2c = device_get_binding(CONFIG_I2C_0_NAME);
-  if (i2c == NULL) {
-    printk("Couldn't get device\n");
-    return;
-  }
+    if(sensor_sample_fetch(mpu6050)) {
+        return;
+    }
 
-  err = mpu6050_init(i2c, 0x68);
-  if (err) return;
+    sensor_channel_get(mpu6050, SENSOR_CHAN_ACCEL_XYZ, accel_xyz);
+    sensor_channel_get(mpu6050, SENSOR_CHAN_GYRO_XYZ, gyro_xyz);
 
-  struct mpu6050_data mpubuf;
-
-  while (true) {
-    err = mpu6050_read(i2c, 0x68, &mpubuf);
-    if (err) continue;
-    printk("%d\t%d\t%d\t%d\t%d\t%d\t%d\n", mpubuf.x_accel, mpubuf.y_accel, mpubuf.z_accel, mpubuf.temp, mpubuf.x_gyro, mpubuf.y_gyro, mpubuf.z_gyro);
-  }
+    printk("%d.%d\t%d.%d\t%d.%d\t%d\t%d\t%d\n",
+        accel_xyz[0].val1, accel_xyz[0].val2,
+        accel_xyz[1].val1, accel_xyz[1].val2,
+        accel_xyz[2].val1, accel_xyz[2].val2,
+        gyro_xyz[0].val1,
+        gyro_xyz[1].val1,
+        gyro_xyz[2].val1);
 }
 
 void main(void)
 {
-	int err;
+    int err, count = 0;
 
-  // print_mpu_data(); // Test the MPU driver (loops forever)
+    struct device *leds = device_get_binding(LED0_GPIO_PORT),
+                  *sw0 = device_get_binding(SW0_GPIO_NAME),
+                  *sw1 = device_get_binding(SW1_GPIO_NAME);
+    // struct device *mpu6050 = device_get_binding(CONFIG_MPU6050_NAME);
 
-  err = bt_enable(bt_ready);
-	if (err) {
-		printk("Bluetooth init failed (err %d)\n", err);
-		return;
-	}
+    gpio_pin_configure(leds, LED0_GPIO_PIN, GPIO_DIR_OUT);
+    gpio_pin_configure(sw0, SW0_GPIO_PIN, GPIO_DIR_IN | SW0_GPIO_PIN_PUD);
+    gpio_pin_configure(sw1, SW1_GPIO_PIN, GPIO_DIR_IN | SW1_GPIO_PIN_PUD);
 
-	bt_conn_cb_register(&conn_callbacks);
-	bt_conn_auth_cb_register(&auth_cb_display);
 
-	/* Implement notification. At the moment there is no suitable way
-	 * of starting delayed work so we do it here
-	 */
-	while (1) {
-		k_sleep(MSEC_PER_SEC);
+    struct led_rgb pixels[8] = {
+        { .r = 0x20, .g = 0x00, .b = 0x20 },
+        { .r = 0x20, .g = 0x00, .b = 0x20 },
+        { .r = 0x20, .g = 0x00, .b = 0x20 },
+        { .r = 0x20, .g = 0x00, .b = 0x20 },
+        { .r = 0x20, .g = 0x00, .b = 0x20 },
+        { .r = 0x20, .g = 0x00, .b = 0x20 },
+        { .r = 0x20, .g = 0x00, .b = 0x20 },
+        { .r = 0x20, .g = 0x00, .b = 0x20 },
+    };
 
-		/* Current Time Service updates only when time is changed */
-		cts_notify();
+    err = bt_enable(bt_ready);
+    if (err) {
+        printk("Bluetooth init failed (err %d)\n", err);
+        return;
+    }
 
-		/* Heartrate measurements simulation */
-		hrs_notify();
+    struct device *led_strip = device_get_binding(CONFIG_APA102_STRIP_NAME);
+    if(led_strip == NULL)
+    {
+        printk("Failed to get LED strip driver %s\n", CONFIG_APA102_STRIP_NAME);
+    }
 
-		/* Battery level simulation */
-		bas_notify();
+    // if (mpu6050 == NULL) {
+    //     printk("Failed to get IMU driver %s\n", CONFIG_MPU6050_NAME);
+    // }
 
-		/* Vendor indication simulation */
-		if (simulate_vnd) {
-			if (indicating) {
-				continue;
-			}
+    bt_conn_cb_register(&conn_callbacks);
+    // bt_conn_auth_cb_register(&auth_cb_display);
 
-			ind_params.attr = &vnd_attrs[2];
-			ind_params.func = indicate_cb;
-			ind_params.data = &indicating;
-			ind_params.len = sizeof(indicating);
+    while (1) {
+        k_sleep(100);
 
-			if (bt_gatt_indicate(NULL, &ind_params) == 0) {
-				indicating = 1;
-			}
-		}
-	}
+        if(led_strip != NULL)
+            led_strip_update_rgb(led_strip, pixels, 8);
+
+        int sw0_state;
+        if(gpio_pin_read(sw0, SW0_GPIO_PIN, &sw0_state) == 0 && sw0_state == 0)
+            printk("SW0 is pressed\n");
+
+        int sw1_state;
+        if(gpio_pin_read(sw1, SW1_GPIO_PIN, &sw1_state) == 0 && sw1_state == 0)
+        {
+            printk("SW1 is pressed\n");
+            rainbow_flying_disc_discover();
+        }
+
+        // if (mpu6050 != NULL)
+        //     print_mpu_data(mpu6050); // Test the MPU driver
+
+        gpio_pin_write(leds, LED0_GPIO_PIN, count++ & 0x01);
+    }
 }

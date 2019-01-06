@@ -39,3 +39,27 @@ openocd \
     -c "reset run" `# reset and run` \
     -c "exit" `# reset and run`
 ```
+
+## GATT Services
+
+- | Service             | Uniform Type Identifier                      | Assigned UUID                          |
+  |---------------------|----------------------------------------------|----------------------------------------|
+  | Rainbow Flying disc | nz.co.nzsmartie.services.rainbow_flying_disc | `d9a204a1-9ca4-41ec-9dd6-526d6c53c7fe` |
+
+  - | Characteristic | Uniform Type Identifier | Assigned UUID | Requirement |
+    |----------------|-------------------------|---------------|-------------|
+    | Display Message | | `d9a204a2-9ca4-41ec-9dd6-526d6c53c7fe` | Mandatory   |
+
+    The message displayed on the flying disc when in motion.
+
+    | Property | Requirement |
+    |----------|-------------|
+    | Read | Mandatory |
+    | Write | Mandatory |
+    | Write Without Response | Excluded |
+    | Signed Write | Excluded |
+    | Reliable Write| Excluded |
+    | Notify | Excluded |
+    | Indicate | Mandatory |
+    | Writable Auxiliaries | Excluded |
+    | Broadcast | Excluded |

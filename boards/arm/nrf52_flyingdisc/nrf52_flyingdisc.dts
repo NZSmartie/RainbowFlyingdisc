@@ -36,15 +36,15 @@
 };
 
 &i2c0 {
-	status = "ok";
+	status = "disable";
 	sda-pin = <26>;
 	scl-pin = <27>;
 };
 
 &i2c1 {
 	status = "ok";
-	sda-pin = <30>;
-	scl-pin = <31>;
+	sda-pin = <11>;
+	scl-pin = <10>;
 };
 
 &flash0 {
