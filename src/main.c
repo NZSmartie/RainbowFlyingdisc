@@ -33,25 +33,6 @@
 
 #include "gatt.h"
 
-static void connected(struct bt_conn *conn, u8_t err)
-{
-    if (err) {
-        printk("Connection failed (err %u)\n", err);
-    } else {
-        printk("Connected\n");
-    }
-}
-
-static void disconnected(struct bt_conn *conn, u8_t reason)
-{
-    printk("Disconnected (reason %u)\n", reason);
-}
-
-static struct bt_conn_cb conn_callbacks = {
-    .connected = connected,
-    .disconnected = disconnected,
-};
-
 static void bt_ready(int err)
 {
     if (err) {
@@ -155,7 +136,6 @@ void main(void)
     //     printk("Failed to get IMU driver %s\n", CONFIG_MPU6050_NAME);
     // }
 
-    bt_conn_cb_register(&conn_callbacks);
     // bt_conn_auth_cb_register(&auth_cb_display);
 
     while (1) {
