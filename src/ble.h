@@ -1,5 +1,5 @@
-#ifndef _RAINBOW_FLYING_DISC_GATT_H_
-#define _RAINBOW_FLYING_DISC_GATT_H_
+#ifndef _RAINBOW_FLYING_DISC_BLE_H_
+#define _RAINBOW_FLYING_DISC_BLE_H_
 
 #include <bluetooth/uuid.h>
 
@@ -29,4 +29,4 @@ void rainbow_flying_disc_cancel_connect(void);
 }
 #endif
 
-#endif // _RAINBOW_FLYING_DISC_GATT_H_
+#endif // _RAINBOW_FLYING_DISC_BLE_H_

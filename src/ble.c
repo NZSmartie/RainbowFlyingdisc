@@ -4,7 +4,7 @@
 #include <bluetooth/uuid.h>
 #include <bluetooth/gatt.h>
 
-#include "gatt.h"
+#include "ble.h"
 
 #define SCAN_TIMEOUT K_SECONDS(2)
 #define MAX_FOUND_DEVICES 10

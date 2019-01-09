@@ -31,7 +31,7 @@
 #include <gpio.h>
 #include <sensor.h>
 
-#include "gatt.h"
+#include "ble.h"
 
 static void bt_ready(int err)
 {
