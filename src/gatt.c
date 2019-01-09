@@ -7,6 +7,7 @@
 #include "gatt.h"
 
 #define SCAN_TIMEOUT K_SECONDS(2)
+#define MAX_FOUND_DEVICES 10
 
 static enum {
 	BLE_DISCONNECTED,
@@ -19,6 +20,11 @@ static enum {
 	BLE_CONNECTED,
 } ble_state;
 
+typedef struct found_device {
+    s8_t rssi;
+    bt_addr_le_t addr;
+} found_device_t;
+
 static struct bt_uuid_128 rfd_service_uuid = BT_UUID_INIT_128(UUID_RAINBOW_FLYING_DISC_SERVICE);
 static struct bt_uuid_128 rfd_message_uuid = BT_UUID_INIT_128(UUID_RAINBOW_FLYING_DISC_CHARACTERISTIC_MESSAGE);
 
@@ -26,6 +32,10 @@ static struct bt_gatt_discover_params discov_param;
 static struct bt_gatt_read_params read_params;
 
 static u8_t rfd_message[] = { 'R', 'a', 'i', 'n', 'b', 'o', 'w', ' ', 'F', 'l', 'y', 'i', 'n', 'g', ' ', 'D', 'i', 's', 'c'};
+static struct {
+    found_device_t devices[MAX_FOUND_DEVICES];
+    u8_t count;
+} found_devices = {0};
 
 static struct k_delayed_work ble_work;
 static struct bt_conn *default_conn;
@@ -88,8 +98,6 @@ ssize_t rfd_write_message(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 
     memcpy(value + offset, buf, len);
 
-    printk("Message is now %s\n", rfd_message);
-
     return len;
 }
 
@@ -108,17 +116,27 @@ static bool uuid_match(const u8_t *data, u8_t len, const struct bt_uuid* uuid)
 	return false;
 }
 
-static void create_conn(const bt_addr_le_t *addr)
+static void create_conn()
 {
-	if (default_conn) {
+    if (default_conn || found_devices.count == 0) {
 		return;
 	}
 
-    char src[BT_ADDR_LE_STR_LEN];
-    bt_addr_le_to_str(addr, src, sizeof(src));
-	printk("Found [%s], starting connection...\n", src);
+    // Start with the first device found
+    found_device_t *device = &found_devices.devices[0];
 
-	default_conn = bt_conn_create_le(addr, BT_LE_CONN_PARAM_DEFAULT);
+    // select the deivce with the highest rssi;
+    for(int i = 1; i < found_devices.count; i++)
+    {
+        if (found_devices.devices[i].rssi > device->rssi)
+            device = &found_devices.devices[i];
+    }
+
+    char src[BT_ADDR_LE_STR_LEN];
+    bt_addr_le_to_str(&device->addr, src, sizeof(src));
+    printk("Found [%s], starting connection...\n", src);
+
+    default_conn = bt_conn_create_le(&device->addr, BT_LE_CONN_PARAM_DEFAULT);
 	if (!default_conn) {
 		printk("Failed to initiate connection");
 		return;
@@ -174,9 +192,10 @@ static void disconnected(struct bt_conn *conn, u8_t reason)
 static void device_found(const bt_addr_le_t *addr, s8_t rssi, u8_t type,
 			 struct net_buf_simple *ad)
 {
-	if (type != BT_LE_ADV_IND) {
+	if (type != BT_LE_ADV_IND || found_devices.count >= MAX_FOUND_DEVICES) {
 		return;
 	}
+
 
 	while (ad->len > 1) {
 		u8_t len = net_buf_simple_pull_u8(ad);
@@ -192,11 +211,17 @@ static void device_found(const bt_addr_le_t *addr, s8_t rssi, u8_t type,
 			return;
 		}
 
+		char addr_str[BT_ADDR_LE_STR_LEN];
+        bt_addr_le_to_str(addr, addr_str, sizeof(addr_str));
+
 		type = net_buf_simple_pull_u8(ad);
-		if (type == BT_DATA_UUID128_ALL &&
-            uuid_match(ad->data, len - 1, &rfd_service_uuid.uuid)) {
-			bt_le_scan_stop();
-			create_conn(addr);
+		if (type == BT_DATA_UUID128_ALL && uuid_match(ad->data, len - 1, &rfd_service_uuid.uuid)) {
+			printk("Found device [%s] with RSSI: %ddB\n", addr_str, rssi);
+
+			found_devices.devices[found_devices.count].rssi = rssi;
+			memcpy(&found_devices.devices[found_devices.count].addr, addr, sizeof(bt_addr_le_t));
+			found_devices.count++;
+
 			return;
 		}
 
@@ -225,6 +250,8 @@ static u8_t read_message_cb(struct bt_conn *conn, u8_t err, struct bt_gatt_read_
         printk("%02X", *((char*)data + i) & 0xFF);
     }
     printk("\n");
+
+    bt_conn_disconnect(default_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
 
     return BT_GATT_ITER_STOP;
 }
@@ -288,6 +315,9 @@ static void ble_timeout(struct k_work *work)
 	    case BLE_DISCONNECTED:
 		    break;
 	    case BLE_SCAN_START:
+            // Reset found devices
+            found_devices.count = 0;
+
             err = bt_le_scan_start(BT_LE_SCAN_PASSIVE, device_found);
             if (err) {
                 printk("Scanning failed to start (err %d)\n", err);
@@ -301,32 +331,22 @@ static void ble_timeout(struct k_work *work)
             printk("Connection attempt timed out\n");
             bt_conn_disconnect(default_conn,
                     BT_HCI_ERR_REMOTE_USER_TERM_CONN);
-            ble_state = BLE_ADV_START;
+            ble_state = BLE_SCAN_START;
             k_delayed_work_submit(&ble_work, K_NO_WAIT);
             break;
         case BLE_SCAN:
-            printk("No devices found during scan\n");
             bt_le_scan_stop();
-            ble_state = BLE_ADV_START;
-            k_delayed_work_submit(&ble_work, K_NO_WAIT);
-            break;
-        case BLE_ADV_START:
-            err = bt_le_adv_start(BT_LE_ADV_CONN_NAME, ad, ARRAY_SIZE(ad),
-                        NULL, 0);
-            if (err) {
-                printk("Advertising failed to start (err %d)\n", err);
-                return;
+
+            if (found_devices.count == 0) {
+                printk("No devices found during scan\n");
+
+                ble_state = BLE_SCAN_START;
+                k_delayed_work_submit(&ble_work, K_NO_WAIT);
+            } else {
+                // Try connecting to the device with the highest RSSI
+                create_conn();
             }
 
-            printk("Advertising successfully started\n");
-            ble_state = BLE_ADVERTISING;
-            k_delayed_work_submit(&ble_work, K_SECONDS(10));
-            break;
-        case BLE_ADVERTISING:
-            printk("Timed out advertising\n");
-            bt_le_adv_stop();
-            ble_state = BLE_SCAN_START;
-            k_delayed_work_submit(&ble_work, K_NO_WAIT);
             break;
         case BLE_CONNECTED:
             discov_param.uuid = &rfd_service_uuid.uuid;
