@@ -1,6 +1,7 @@
 #ifndef _RAINBOW_FLYING_DISC_BLE_H_
 #define _RAINBOW_FLYING_DISC_BLE_H_
 
+#include <kernel.h>
 #include <bluetooth/uuid.h>
 
 // d9a204a1-9ca4-41ec-9dd6-526d6c53c7fe
@@ -17,7 +18,7 @@
 extern "C" {
 #endif
 
-void rainbow_flying_disc_init(void);
+void rainbow_flying_disc_init(struct k_msgq *events);
 void rainbow_flying_disc_discover(void);
 void rainbow_flying_disc_cancel_connect(void);
 

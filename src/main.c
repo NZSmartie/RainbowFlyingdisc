@@ -32,6 +32,9 @@
 #include <sensor.h>
 
 #include "ble.h"
+#include "events.h"
+
+K_MSGQ_DEFINE(events, sizeof(event_t), 10, 4);
 
 static void bt_ready(int err)
 {
@@ -42,10 +45,11 @@ static void bt_ready(int err)
 
     printk("Bluetooth initialized\n");
 
+    // TODO: Support customising the name per owner?
     // bt_set_name("Rainbow Flying Disc");
 
     // Initialise and register our Rainbow Flying Disc GATT service
-    rainbow_flying_disc_init();
+    rainbow_flying_disc_init(&events);
 
     if (IS_ENABLED(CONFIG_SETTINGS)) {
         settings_load();
@@ -120,6 +124,8 @@ void main(void)
         { .r = 0x20, .g = 0x00, .b = 0x20 },
     };
 
+    event_t event_data = {0};
+
     err = bt_enable(bt_ready);
     if (err) {
         printk("Bluetooth init failed (err %d)\n", err);
@@ -136,10 +142,23 @@ void main(void)
     //     printk("Failed to get IMU driver %s\n", CONFIG_MPU6050_NAME);
     // }
 
+    // TODO: Support a whitelisted mode, only connecting to known devices
     // bt_conn_auth_cb_register(&auth_cb_display);
 
     while (1) {
         k_sleep(100);
+
+        if (k_msgq_get(&events, &event_data, K_NO_WAIT) == 0)
+        {
+            switch(event_data.event_type) {
+                case kEventMessage:
+                    printk("new message event! read %s (%d)\n", event_data.message, event_data.size);
+                    break;
+                default:
+                    printk("Unhandled event (%d)\n", event_data.event_type);
+                    break;
+            }
+        }
 
         if(led_strip != NULL)
             led_strip_update_rgb(led_strip, pixels, 8);

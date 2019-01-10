@@ -5,6 +5,7 @@
 #include <bluetooth/gatt.h>
 
 #include "ble.h"
+#include "events.h"
 
 #define SCAN_TIMEOUT K_SECONDS(2)
 #define MAX_FOUND_DEVICES 10
@@ -42,6 +43,7 @@ static struct bt_conn *default_conn;
 static bool connect_canceled = false;
 static u16_t remote_handle;
 static bool remote_ready;
+static struct k_msgq *_events = NULL;
 
 ssize_t rfd_read_message(struct bt_conn *conn, const struct bt_gatt_attr *attr, void *buf, u16_t len, u16_t offset);
 ssize_t rfd_write_message(struct bt_conn *conn, const struct bt_gatt_attr *attr, const void *buf, u16_t len, u16_t offset, u8_t flags);
@@ -240,17 +242,12 @@ static u8_t read_message_cb(struct bt_conn *conn, u8_t err, struct bt_gatt_read_
         return BT_GATT_ITER_STOP;
     }
 
-    char message[80];
-    memset(message, 0, sizeof(message));
-    memcpy(message, data, length);
+    // queue the received message
+    if (event_message(_events, (const char*)data, length, K_NO_WAIT) != 0)
+        printk("Could not queue message");
 
-    printk("read_message_cb() read %s (%d)\n", (const char*)message, length);
-    for(int i = 0; i < length; i++)
-    {
-        printk("%02X", *((char*)data + i) & 0xFF);
-    }
-    printk("\n");
-
+    // Disconnect as we're done.
+    // TODO: Where is the best place to disconnect after all read/write operations are done?
     bt_conn_disconnect(default_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
 
     return BT_GATT_ITER_STOP;
@@ -366,8 +363,9 @@ static void ble_timeout(struct k_work *work)
 	}
 }
 
-void rainbow_flying_disc_init()
+void rainbow_flying_disc_init(struct k_msgq *events)
 {
+    _events = events;
     k_delayed_work_init(&ble_work, ble_timeout);
 
     bt_conn_cb_register(&conn_callbacks);
