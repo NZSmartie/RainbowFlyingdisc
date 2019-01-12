@@ -16,8 +16,6 @@ static enum {
 	BLE_SCAN,
 	BLE_CONNECT_CREATE,
 	BLE_CONNECT_CANCEL,
-	BLE_ADV_START,
-	BLE_ADVERTISING,
 	BLE_CONNECTED,
 } ble_state;
 
@@ -64,11 +62,6 @@ static struct bt_gatt_attr vnd_attrs[] = {
 };
 
 static struct bt_gatt_service vnd_svc = BT_GATT_SERVICE(vnd_attrs);
-
-static const struct bt_data ad[] = {
-    BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
-    BT_DATA_BYTES(BT_DATA_UUID128_ALL, UUID_RAINBOW_FLYING_DISC_SERVICE),
-};
 
 struct bt_le_scan_param scan_param = {
     .type       = BT_HCI_LE_SCAN_PASSIVE,
@@ -135,8 +128,8 @@ static void create_conn()
     }
 
     char src[BT_ADDR_LE_STR_LEN];
-    bt_addr_le_to_str(&device->addr, src, sizeof(src));
-    printk("Found [%s], starting connection...\n", src);
+    bt_addr_to_str(&device->addr.a, src, sizeof(src));
+    printk("Connecting to [%s]...\n", src);
 
     default_conn = bt_conn_create_le(&device->addr, BT_LE_CONN_PARAM_DEFAULT);
 	if (!default_conn) {
@@ -155,10 +148,6 @@ static void connected(struct bt_conn *conn, u8_t err)
 	if (err) {
 		printk("Connection failed (err %u)\n", err);
 		return;
-	}
-
-	if (ble_state == BLE_ADVERTISING) {
-		bt_le_adv_stop();
 	}
 
 	if (!default_conn) {
@@ -214,7 +203,7 @@ static void device_found(const bt_addr_le_t *addr, s8_t rssi, u8_t type,
 		}
 
 		char addr_str[BT_ADDR_LE_STR_LEN];
-        bt_addr_le_to_str(addr, addr_str, sizeof(addr_str));
+		bt_addr_to_str(&addr->a, addr_str, sizeof(addr_str));
 
 		type = net_buf_simple_pull_u8(ad);
 		if (type == BT_DATA_UUID128_ALL && uuid_match(ad->data, len - 1, &rfd_service_uuid.uuid)) {
@@ -397,13 +386,6 @@ void rainbow_flying_disc_cancel_connect(void)
 		ble_state = BLE_DISCONNECTED;
 		break;
 	case BLE_SCAN:
-		connect_canceled = true;
-		k_delayed_work_submit(&ble_work, K_NO_WAIT);
-		break;
-	case BLE_ADV_START:
-		ble_state = BLE_DISCONNECTED;
-		break;
-	case BLE_ADVERTISING:
 		connect_canceled = true;
 		k_delayed_work_submit(&ble_work, K_NO_WAIT);
 		break;
