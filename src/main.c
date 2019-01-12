@@ -33,6 +33,7 @@
 
 #include "ble.h"
 #include "events.h"
+#include "pov.h"
 
 K_MSGQ_DEFINE(events, sizeof(event_t), 10, 4);
 
@@ -113,29 +114,14 @@ void main(void)
     gpio_pin_configure(sw1, SW1_GPIO_PIN, GPIO_DIR_IN | SW1_GPIO_PIN_PUD);
 
 
-    struct led_rgb pixels[8] = {
-        { .r = 0x20, .g = 0x00, .b = 0x20 },
-        { .r = 0x20, .g = 0x00, .b = 0x20 },
-        { .r = 0x20, .g = 0x00, .b = 0x20 },
-        { .r = 0x20, .g = 0x00, .b = 0x20 },
-        { .r = 0x20, .g = 0x00, .b = 0x20 },
-        { .r = 0x20, .g = 0x00, .b = 0x20 },
-        { .r = 0x20, .g = 0x00, .b = 0x20 },
-        { .r = 0x20, .g = 0x00, .b = 0x20 },
-    };
-
     event_t event_data = {0};
+
+    pov_init();
 
     err = bt_enable(bt_ready);
     if (err) {
         printk("Bluetooth init failed (err %d)\n", err);
         return;
-    }
-
-    struct device *led_strip = device_get_binding(CONFIG_APA102_STRIP_NAME);
-    if(led_strip == NULL)
-    {
-        printk("Failed to get LED strip driver %s\n", CONFIG_APA102_STRIP_NAME);
     }
 
     // if (mpu6050 == NULL) {
@@ -153,15 +139,13 @@ void main(void)
             switch(event_data.event_type) {
                 case kEventMessage:
                     printk("new message event! read %s (%d)\n", event_data.message, event_data.size);
+                    pov_set_message(event_data.message, event_data.size);
                     break;
                 default:
                     printk("Unhandled event (%d)\n", event_data.event_type);
                     break;
             }
         }
-
-        if(led_strip != NULL)
-            led_strip_update_rgb(led_strip, pixels, 8);
 
         int sw0_state;
         if(gpio_pin_read(sw0, SW0_GPIO_PIN, &sw0_state) == 0 && sw0_state == 0)
